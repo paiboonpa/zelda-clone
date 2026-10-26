@@ -1,0 +1,78 @@
+:root {
+  --ink: #f3efe2;
+  --panel: rgba(14, 18, 16, 0.86);
+  --panel-edge: rgba(190, 210, 255, 0.35);
+  --accent: #8fe3c0;
+  --lock: #ff6fa0;
+  --gold: #e9c869;
+  font-family: "Trebuchet MS", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color: var(--ink); }
+canvas#view { display: block; width: 100vw; height: 100vh; }
+.hidden { display: none !important; }
+
+#hud { position: fixed; inset: 0; pointer-events: none; }
+#hearts { position: absolute; top: 18px; left: 22px; display: flex; flex-wrap: wrap; gap: 2px; max-width: min(320px, 60vw); }
+#hearts svg { width: 26px; height: 24px; filter: drop-shadow(0 1px 2px #000a); }
+#gems { position: absolute; top: 50px; left: 24px; display: flex; align-items: center; gap: 6px; font-size: 18px; font-weight: bold; text-shadow: 0 1px 3px #000; }
+.gem-icon { width: 12px; height: 18px; background: linear-gradient(135deg, #b9ffb0, #2fbf4a 60%, #157a2a); clip-path: polygon(50% 0, 100% 30%, 100% 70%, 50% 100%, 0 70%, 0 30%); display: inline-block; }
+
+#items { position: absolute; top: 16px; right: 20px; display: flex; gap: 8px; align-items: flex-start; }
+.slot { width: 52px; height: 52px; border-radius: 10px; background: rgba(10, 12, 10, 0.55); border: 2px solid rgba(233, 200, 105, 0.7); display: grid; place-items: center; }
+.slot svg { width: 36px; height: 36px; }
+.slot.off { opacity: 0.25; }
+#prompt { position: fixed; right: 210px; bottom: 30px; background: rgba(10, 12, 10, 0.6); padding: 6px 12px; border-radius: 16px; font-size: 15px; opacity: 0; transition: opacity 0.15s; white-space: nowrap; }
+#prompt.on { opacity: 1; }
+#prompt kbd { display: inline-block; min-width: 22px; padding: 1px 6px; margin-right: 6px; border-radius: 6px; background: var(--ink); color: #111; font: bold 13px system-ui; text-align: center; }
+
+#minimap { position: absolute; right: 18px; bottom: 18px; width: 180px; }
+#mapCanvas { width: 180px; height: 180px; display: block; opacity: 0.92; }
+#mapName { text-align: center; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gold); text-shadow: 0 1px 2px #000; margin-top: 2px; }
+
+#markers .tri { position: absolute; width: 0; height: 0; border-left: 9px solid transparent; border-right: 9px solid transparent; border-top: 16px solid var(--lock); filter: drop-shadow(0 0 4px #ff3d7f); transform-origin: 50% 50%; }
+#markers .tri.soft { border-top-color: #ffe27a; filter: drop-shadow(0 0 4px #ffd34d); }
+#bubbles .bubble { position: absolute; transform: translate(-50%, -100%); background: rgba(12, 14, 12, 0.72); padding: 4px 10px; border-radius: 10px; font-size: 14px; white-space: nowrap; }
+
+#banner { position: absolute; top: 18%; width: 100%; text-align: center; font-size: clamp(22px, 4vw, 40px); letter-spacing: 0.12em; color: var(--ink); text-shadow: 0 2px 10px #000; opacity: 0; transition: opacity 0.8s; }
+#banner.on { opacity: 1; }
+#banner small { display: block; font-size: 0.4em; color: var(--gold); letter-spacing: 0.3em; }
+#toast { position: absolute; top: 90px; left: 50%; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--panel-edge); padding: 10px 18px; border-radius: 12px; opacity: 0; transition: opacity 0.3s; max-width: min(560px, 90vw); text-align: center; }
+#toast.on { opacity: 1; }
+#vignette { position: absolute; inset: 0; box-shadow: inset 0 0 160px rgba(255, 0, 40, 0); transition: box-shadow 0.2s; }
+#vignette.hurt { box-shadow: inset 0 0 160px rgba(255, 0, 40, 0.55); }
+
+#dialog { position: fixed; left: 50%; bottom: 5vh; transform: translateX(-50%); width: min(760px, 92vw); min-height: 120px; background: var(--panel); border: 2px solid var(--panel-edge); border-radius: 26px; padding: 26px 34px 22px; box-shadow: 0 0 30px rgba(120, 140, 255, 0.25); font-size: clamp(16px, 2.2vw, 20px); line-height: 1.5; }
+#speaker { position: absolute; top: -14px; left: 30px; background: #2b3f63; color: #dfe9ff; padding: 2px 14px; border-radius: 10px; font-size: 14px; }
+#speaker:empty { display: none; }
+#dtext { min-height: 3em; white-space: pre-wrap; }
+#dtext em { color: #ff8a8a; font-style: normal; }
+#choices { list-style: none; margin: 10px 0 0; padding: 0; }
+#choices li { padding: 4px 12px; border-radius: 8px; }
+#choices li.sel { background: rgba(143, 227, 192, 0.2); color: var(--accent); }
+#choices li.sel::before { content: "▶ "; }
+#dnext { position: absolute; bottom: 6px; left: 50%; color: #a9b8ff; font-size: 14px; animation: bob 0.8s infinite alternate; }
+@keyframes bob { to { transform: translateY(4px); } }
+
+#fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.35s; }
+#fade.on { opacity: 1; }
+
+.screen { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: radial-gradient(ellipse at center, rgba(20, 40, 28, 0.82), rgba(0, 0, 0, 0.94)); text-align: center; padding: 16px; }
+.screen h1 { font-size: clamp(38px, 8vw, 76px); margin: 0; letter-spacing: 0.08em; color: #d7f5c9; text-shadow: 0 0 24px rgba(140, 255, 170, 0.45); }
+.screen h2 { font-size: 36px; margin: 0 0 8px; }
+.screen .sub, .screen p { color: #b8c9b8; }
+.menu { display: flex; flex-direction: column; gap: 10px; margin: 26px 0; }
+.menu button { font: inherit; font-size: 18px; min-width: 240px; padding: 10px 20px; border-radius: 24px; border: 1px solid #7da889; background: rgba(40, 70, 50, 0.7); color: var(--ink); cursor: pointer; }
+.menu button:hover { background: rgba(70, 120, 85, 0.85); }
+.controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 26px; max-width: 640px; color: #c9d6c9; font-size: 14px; text-align: left; }
+.controls.small { font-size: 13px; }
+.controls b { color: var(--gold); }
+#objective { max-width: 520px; color: var(--accent); }
+#error { position: fixed; top: 10px; left: 10px; right: 10px; padding: 12px; background: #600; color: #fff; font: 13px monospace; white-space: pre-wrap; }
+
+@media (max-width: 640px) {
+  #minimap { width: 120px; } #mapCanvas { width: 120px; height: 120px; }
+  #prompt { right: 150px; }
+  .slot { width: 42px; height: 42px; } .slot svg { width: 28px; height: 28px; }
+  .controls { grid-template-columns: 1fr; }
+}

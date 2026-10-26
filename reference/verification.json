@@ -1,0 +1,32 @@
+{
+  "status": "pass",
+  "total_frames_verified": 15703,
+  "clips": [
+    {
+      "clip": "battle",
+      "frames_verified": 2038,
+      "resolution": [
+        1920,
+        1080
+      ],
+      "first_pts": 0.016,
+      "last_pts": 33.99995,
+      "copied_source_sha256_matches": true,
+      "audio_tracks_verified": 1,
+      "contact_sheets": 1
+    },
+    {
+      "clip": "walk",
+      "frames_verified": 13665,
+      "resolution": [
+        1920,
+        1080
+      ],
+      "first_pts": 0.049367,
+      "last_pts": 228.010433,
+      "copied_source_sha256_matches": true,
+      "audio_tracks_verified": 1,
+      "contact_sheets": 6
+    }
+  ]
+}

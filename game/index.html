@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verdant Hollow</title>
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<div id="hud" class="hidden">
+  <div id="hearts"></div>
+  <div id="gems"><span class="gem-icon"></span><span id="gemCount">0</span></div>
+  <div id="items">
+    <div class="slot" id="slotSword" title="Sword"><svg viewBox="0 0 32 32"><path d="M22 4l6 0 0 6-12 12-3-3z" fill="#dfe8ee"/><path d="M8 20l4 4-2 2-1.5-1.5L5 28l-1-1 3.5-3.5L6 22z" fill="#8a5a2b"/><path d="M7 17l8 8-1.5 1.5-8-8z" fill="#c9a640"/></svg></div>
+    <div class="slot" id="slotShield" title="Shield"><svg viewBox="0 0 32 32"><path d="M16 3l11 4v8c0 7-5 12-11 14C10 27 5 22 5 15V7z" fill="#8a5a2b" stroke="#c9a640" stroke-width="2"/><circle cx="16" cy="14" r="4" fill="#c03a30"/></svg></div>
+    <div id="prompt"></div>
+  </div>
+  <div id="minimap"><canvas id="mapCanvas" width="180" height="180"></canvas><div id="mapName"></div></div>
+  <div id="markers"></div>
+  <div id="bubbles"></div>
+  <div id="banner"></div>
+  <div id="toast"></div>
+  <div id="vignette"></div>
+</div>
+
+<div id="dialog" class="hidden">
+  <div id="speaker"></div>
+  <div id="dtext"></div>
+  <ul id="choices"></ul>
+  <div id="dnext">▼</div>
+</div>
+
+<div id="fade"></div>
+
+<div id="title" class="screen">
+  <h1>Verdant Hollow</h1>
+  <p class="sub">A small adventure in a forest village</p>
+  <div class="menu">
+    <button id="btnContinue" class="hidden">Continue</button>
+    <button id="btnNew">New game</button>
+  </div>
+  <div class="controls">
+    <div><b>WASD</b> move</div><div><b>Mouse</b> / <b>Arrows</b> camera</div>
+    <div><b>Left click</b> / <b>J</b> sword · hold to charge a spin</div><div><b>Right click</b> / <b>K</b> / <b>Shift</b> shield</div>
+    <div><b>Q</b> / <b>Tab</b> lock on</div><div><b>E</b> talk · lift · open</div>
+    <div><b>Space</b> jump / dodge</div><div><b>Esc</b> pause · <b>M</b> music</div>
+  </div>
+</div>
+
+<div id="pause" class="screen hidden">
+  <h2>Paused</h2>
+  <p id="objective"></p>
+  <div class="menu">
+    <button id="btnResume">Resume</button>
+    <button id="btnMusic">Music: on</button>
+    <button id="btnRestart">Restart from village</button>
+  </div>
+  <div class="controls small">
+    <div><b>WASD</b> move</div><div><b>Mouse</b> / <b>Arrows</b> camera</div>
+    <div><b>Left click</b> / <b>J</b> sword · hold to charge</div><div><b>Right click</b> / <b>K</b> / <b>Shift</b> shield</div>
+    <div><b>Q</b> / <b>Tab</b> lock on</div><div><b>E</b> talk · lift · open</div>
+    <div><b>Space</b> jump / dodge</div><div><b>M</b> music</div>
+  </div>
+</div>
+
+<div id="gameover" class="screen hidden">
+  <h2>You collapsed…</h2>
+  <p>Glim drags you back to safety.</p>
+  <div class="menu"><button id="btnRetry">Get up</button></div>
+</div>
+
+<div id="error" class="hidden"></div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
