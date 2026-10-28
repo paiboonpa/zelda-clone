@@ -124,16 +124,30 @@ cells.cobble = cells(28, 3);
 cells.rock = cells(18, 4);
 
 function build(name) {
-  const c = document.createElement('canvas'); c.width = c.height = SIZE;
+  const size = name === 'leaf' ? 512 : SIZE;
+  const c = document.createElement('canvas'); c.width = c.height = size;
   const ctx = c.getContext('2d');
-  const img = ctx.createImageData(SIZE, SIZE);
+  const img = ctx.createImageData(size, size);
   const fn = GEN[name];
-  for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) {
-    const v = (0.3 + 0.7 * clamp01(fn(x / SIZE, y / SIZE)[0])) * 255;
-    const i = (y * SIZE + x) * 4;
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const v = (0.3 + 0.7 * clamp01(fn(x / size, y / size)[0])) * 255;
+    const i = (y * size + x) * 4;
     img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255;
   }
   ctx.putImageData(img, 0, 0);
+  if (name === 'leaf') {
+    // Overlapping leaf silhouettes avoid a cellular, stone-like canopy surface.
+    for(let i=0;i<1200;i++) {
+      const x=hash(i,1,31)*size,y=hash(i,2,31)*size;
+      const w=9+hash(i,3,31)*9,h=17+hash(i,4,31)*17;
+      for(const ox of [-size,0,size])for(const oy of [-size,0,size]) {
+        ctx.save();ctx.translate(x+ox,y+oy);ctx.rotate(hash(i,5,31)*Math.PI*2);
+        const light=Math.round(132+hash(i,6,31)*100);ctx.fillStyle=`rgb(${light},${light},${light})`;
+        ctx.beginPath();ctx.moveTo(0,-h/2);ctx.quadraticCurveTo(w,h*.05,0,h/2);ctx.quadraticCurveTo(-w,-h*.05,0,-h/2);ctx.fill();
+        ctx.strokeStyle=`rgb(${light+15},${light+15},${light+15})`;ctx.lineWidth=.7;ctx.beginPath();ctx.moveTo(0,-h*.4);ctx.lineTo(0,h*.4);ctx.stroke();ctx.restore();
+      }
+    }
+  }
   return c;
 }
 

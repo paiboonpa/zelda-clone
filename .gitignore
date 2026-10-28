@@ -1,9 +1,0 @@
-reference/*/frames/
-reference/*/source.mp4
-reference/*/audio/*.wav
-reference/*/audio/*.m4a
-__pycache__/
-.playwright-mcp/
-.DS_Store
-reference/*/sheets/
-reference/walk/viewer-after-frame-removal.png

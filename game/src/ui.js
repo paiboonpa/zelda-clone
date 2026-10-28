@@ -38,7 +38,20 @@ export class UI {
     // Context prompt
     const pr = $('prompt');
     const c = g.context;
-    if (c && g.state === 'play') { pr.innerHTML = `<kbd>${c.key}</kbd>${c.label}`; pr.classList.add('on'); } else pr.classList.remove('on');
+    pr.classList.toggle('rock-hint', !!c?.rockHint);
+    pr.classList.toggle('at-object', !!c?.target);
+    if (c && g.state === 'play') {
+      const text = `${c.rockHint ? 'กด ' : ''}<kbd>${c.key}</kbd>${c.rockHint ? ' ' : ''}${c.label}`;
+      if (pr.innerHTML !== text) pr.innerHTML = text;
+      let visible = true;
+      if (c.target) {
+        const p = c.target.position, screen = this.project(p.x, p.y + .95, p.z);
+        pr.style.left = Math.max(125, Math.min(innerWidth - 125, screen.x)) + 'px';
+        pr.style.top = Math.max(80, Math.min(innerHeight - 90, screen.y)) + 'px';
+        visible = screen.on;
+      } else { pr.style.removeProperty('left'); pr.style.removeProperty('top'); }
+      pr.classList.toggle('on', visible);
+    } else pr.classList.remove('on');
 
     this.updateMarkers(time);
     this.toastT -= dt; if (this.toastT <= 0) $('toast').classList.remove('on');

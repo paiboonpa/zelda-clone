@@ -1,13 +1,17 @@
 import * as THREE from 'three';
 import { TAU } from './util.js';
 import { tex, bump } from './textures.js';
+import { makeReferenceHero } from './hero-model.js';
+import { makeSpreadingTree } from './reference-tree.js';
+import { makeReferencePine } from './reference-pine.js';
+import { forestMaterial, stoneGeometry, trunkGeometry, rootGeometry, crownGeometry, leafCluster } from './environment-detail.js';
 
 // Procedural, original low-poly assets. Every model faces +z at yaw 0.
 const matCache = new Map();
 export function mat(color, o = {}) {
   const key = color + JSON.stringify(o);
   if (!matCache.has(key)) {
-    const m = new THREE.MeshStandardMaterial({ color, roughness: o.rough ?? 0.85, metalness: o.metal ?? 0, emissive: o.emissive ?? 0x000000, emissiveIntensity: o.ei ?? 1, flatShading: o.flat ?? false, transparent: o.opacity != null, opacity: o.opacity ?? 1, side: o.side ?? THREE.FrontSide });
+    const m = new THREE.MeshStandardMaterial({ color, roughness: o.rough ?? 0.85, metalness: o.metal ?? 0, emissive: o.emissive ?? 0x000000, emissiveIntensity: o.ei ?? 1, flatShading: o.flat ?? false, vertexColors: o.vertexColors ?? false, transparent: o.opacity != null, opacity: o.opacity ?? 1, side: o.side ?? THREE.FrontSide });
     if (o.tex) {
       const [rx, ry] = o.rep || [1, 1];
       m.map = tex(o.tex, rx, ry);
@@ -108,6 +112,10 @@ export function makeHumanoid(o = {}) {
 }
 
 export function makeHero() {
+  return makeReferenceHero();
+}
+
+export function makeLegacyHero() {
   const rig = makeHumanoid({ hat: 'cap', top: '#3b7d34', hair: '#e6c15a' });
   // Sword: hilt at origin, blade along +y.
   const sword = new THREE.Group();
@@ -249,27 +257,35 @@ export function makeSeed() {
 // --------------------------------------------------------------------- props
 export function giantTrunk(h = 18, r = 2.2) {
   const g = new THREE.Group();
-  const bark = mat('#6a5038', { tex: 'bark', rep: [3, 4], bump: 3 });
-  g.add(scaled(G.cylLo, bark, r * 0.8, h, r, 0, h / 2, 0));
+  g.userData.groundFit={height:3,embed:.12};
+  const bark = forestMaterial('bark','#795c40');
+  g.add(scaled(trunkGeometry, bark, r, h, r, 0, h / 2, 0));
   for (let i = 0; i < 5; i++) {
     const a = i / 5 * TAU + 0.3;
-    const root = scaled(G.coneLo, bark, r * 0.35, 3, r * 0.35, Math.cos(a) * r * 0.9, 0.8, Math.sin(a) * r * 0.9);
+    const root = scaled(rootGeometry, bark, r * 0.35, 3, r * 0.35, Math.cos(a) * r * 0.9, 0.8, Math.sin(a) * r * 0.9);
     root.rotation.set(Math.sin(a) * 0.9, 0, -Math.cos(a) * 0.9);
     g.add(root);
   }
-  const canopy = mat('#3a6a2c', { flat: true, tex: 'leaf', rep: [4, 4], bump: 2 });
-  for (let i = 0; i < 4; i++) g.add(scaled(G.ico, canopy, 5 + i, 3, 5 + i, Math.sin(i * 2) * 3, h - 1 + i * 1.5, Math.cos(i * 2) * 3, false));
+  const canopy = mat('#517c38', { vertexColors: true, tex: 'leaf', rep: [4, 4], bump: .035 });
+  for (let i = 0; i < 4; i++) {
+    const center=[Math.sin(i*2)*3,h-1+i*1.5,Math.cos(i*2)*3],radii=[5+i,3,5+i];
+    g.add(scaled(crownGeometry,canopy,...radii,...center,false));
+    leafCluster(g,center,radii,550,i,1.2);
+  }
   return g;
 }
 
-export function treeHouse(color = '#6a4a30', door = '#7a2a1a') {
+export function treeHouse(color = '#6a4a30', door = '#7a2a1a', openDoor = false) {
   const g = new THREE.Group();
-  const bark = mat(color, { tex: 'bark', rep: [4, 2], bump: 3 });
-  g.add(scaled(G.cylLo, bark, 3, 6, 3.4, 0, 3, 0));
-  g.add(scaled(G.cylLo, bark, 2.2, 4, 2.4, 0, 7.5, 0));
-  g.add(scaled(G.ico, mat('#4a7a34', { flat: true, tex: 'moss', rep: [3, 3], bump: 2 }), 4.5, 2.8, 4.5, 0, 10, 0));
-  g.add(scaled(G.box, mat(door, { tex: 'wood', rep: [1, 1] }), 1.3, 2.1, 0.3, 0, 1.05, 3.25));
-  g.add(scaled(G.box, mat('#3a2414'), 1.5, 0.2, 0.35, 0, 2.15, 3.25));
+  g.userData.groundFit={height:1,embed:.07};
+  const bark = forestMaterial('bark',color);
+  const trunk = trunkGeometry;
+  g.add(scaled(trunk, bark, 3.4, 6, 3.4, 0, 3, 0));
+  g.add(scaled(trunkGeometry, bark, 2.4, 4, 2.4, 0, 7.5, 0));
+  g.add(scaled(crownGeometry, mat('#5a8640', { vertexColors: true, tex: 'leaf', rep: [3, 3], bump: .035 }), 4.5, 2.8, 4.5, 0, 10, 0));
+  leafCluster(g,[0,10,0],[4.5,2.8,4.5],650,2,1);
+  if(!openDoor)g.add(scaled(G.box, mat(door, { tex: 'wood', rep: [1, 1] }), 1.3, 2.1, 0.3, 0, 1.05, 3.25));
+  if(!openDoor)g.add(scaled(G.box, mat('#3a2414'), 1.5, 0.2, 0.35, 0, 2.15, 3.25));
   const win = mat('#ffd27a', { emissive: '#ffb347', ei: 0.9 });
   g.add(scaled(G.cyl, win, 0.45, 0.2, 0.45, 1.8, 3.6, 2.7).rotateX(Math.PI / 2).rotateZ(0.6));
   g.add(lamp(1.3, 2.6, 3.5));
@@ -286,38 +302,30 @@ export function lamp(x, y, z) {
 }
 
 export function rock(s = 1, color = '#7b7a72', seed = 0) {
-  const m = scaled(G.dodec, mat(color, { flat: true, tex: 'rock', rep: [1, 1], bump: 2 }), s, s * 0.7, s * 1.1, 0, s * 0.35, 0);
+  const m = scaled(stoneGeometry(seed), forestMaterial('rock',color), s, s * 0.7, s * 1.1, 0, s * 0.35, 0);
   m.rotation.set(seed, seed * 2.3, seed * 0.7);
   return m;
 }
 export function liftRock() {
   const g = new THREE.Group();
-  g.add(scaled(G.ico1, mat('#d8d6cc', { flat: true, rough: 0.7, tex: 'rock', bump: 1 }), 0.42, 0.32, 0.4, 0, 0.3, 0));
+  g.add(scaled(stoneGeometry(3), forestMaterial('rock','#d8d6cc'), 0.42, 0.32, 0.4, 0, 0.3, 0));
   return g;
 }
 export function bush(seed = 0) {
   const g = new THREE.Group();
-  const m = mat(seed % 2 ? '#3f8a34' : '#4a9a3a', { flat: true, tex: 'leaf', rep: [1, 1], bump: 2 });
-  g.add(scaled(G.ico, m, 0.45, 0.4, 0.45, 0, 0.35, 0));
-  g.add(scaled(G.ico, m, 0.32, 0.3, 0.32, 0.25, 0.3, 0.15));
-  g.add(scaled(G.ico, m, 0.3, 0.28, 0.3, -0.2, 0.28, -0.18));
+  const m = mat('#668c43', { vertexColors: true, tex: 'leaf', rep: [2, 2], bump: .018 });
+  for(const [center,radii] of [[[0,.35,0],[.43,.38,.43]],[[.25,.3,.15],[.3,.28,.3]],[[-.2,.28,-.18],[.28,.26,.28]]]) {
+    g.add(scaled(crownGeometry,m,...radii,...center));
+    leafCluster(g,center,radii,110,seed,.23);
+  }
   g.rotation.y = seed;
   return g;
 }
 export function roundTree(s = 1, seed = 0) {
-  const g = new THREE.Group();
-  g.add(scaled(G.cylLo, mat('#5b4330', { tex: 'bark', rep: [1, 2] }), 0.25 * s, 3 * s, 0.3 * s, 0, 1.5 * s, 0));
-  const leaf = mat(seed % 2 ? '#4f8a3a' : '#5d9a40', { flat: true, tex: 'leaf', rep: [2, 2], bump: 2 });
-  g.add(scaled(G.ico, leaf, 1.8 * s, 1.5 * s, 1.8 * s, 0, 3.8 * s, 0));
-  g.add(scaled(G.ico, leaf, 1.2 * s, 1 * s, 1.2 * s, 0.9 * s, 3.2 * s, 0.5 * s));
-  return g;
+  return makeSpreadingTree(s, seed);
 }
 export function pine(s = 1) {
-  const g = new THREE.Group();
-  g.add(scaled(G.cylLo, mat('#4a3424'), 0.2 * s, 2 * s, 0.2 * s, 0, 1 * s, 0));
-  const leaf = mat('#2e5a32', { flat: true, tex: 'leaf', rep: [2, 2], bump: 2 });
-  for (let i = 0; i < 3; i++) g.add(scaled(G.coneLo, leaf, (1.4 - i * 0.35) * s, 2 * s, (1.4 - i * 0.35) * s, 0, (2.2 + i * 1.1) * s, 0));
-  return g;
+  return makeReferencePine(s);
 }
 
 export function chest() {

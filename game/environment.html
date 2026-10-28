@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Forest asset inspection</title>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
+<style>body{margin:0;background:#202c29;color:#eee;font:15px system-ui}header{padding:14px 24px}a{color:#c0dc91}h1{font-size:21px;margin:0 0 6px}p{margin:6px 0;color:#c7d1c2}canvas{display:block;width:100%;height:calc(100vh - 120px)}button{background:#3e5340;color:white;border:1px solid #879779;border-radius:4px;padding:7px 14px;margin-right:8px}</style></head><body>
+<header><h1>ก้อนหิน · ต้นไม้ · พุ่มไม้</h1><p>ลากเพื่อหมุน · เลื่อนเพื่อซูม · <a href="./">เปิดเกม</a></p><button data-kind="all">ทั้งหมด</button><button data-kind="rock">ก้อนหิน</button><button data-kind="tree">ต้นไม้ตามภาพอ้างอิง</button><button data-kind="pine">ต้นสน</button><button data-kind="bush">พุ่มไม้</button><button id="cut-bush">ทดลองฟันพุ่มไม้</button></header><canvas id="view"></canvas>
+<script type="module">
+import * as THREE from 'three';import * as M from './src/models.js';import {BushCutEffects} from './src/bush-cut.js';
+const canvas=document.getElementById('view'),renderer=new THREE.WebGLRenderer({canvas,antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.toneMapping=THREE.ACESFilmicToneMapping;
+const scene=new THREE.Scene();scene.background=new THREE.Color('#819082');scene.add(new THREE.HemisphereLight('#eff5e5','#514937',2));const sun=new THREE.DirectionalLight('#fff0d5',3);sun.position.set(6,12,8);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=sun.shadow.camera.bottom=-12;sun.shadow.camera.right=sun.shadow.camera.top=12;scene.add(sun);
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(100,100),new THREE.MeshStandardMaterial({color:'#687658',roughness:1}));floor.rotation.x=-Math.PI/2;floor.receiveShadow=true;scene.add(floor);
+const props={rock:new THREE.Group(),tree:new THREE.Group(),pine:new THREE.Group(),bush:new THREE.Group()};for(const g of Object.values(props))scene.add(g);
+const stone=M.rock(1.1);stone.position.set(-3.5,.4,0);props.rock.add(stone);const small=M.liftRock();small.position.set(-2.5,0,1.2);props.rock.add(small);
+const tree=M.roundTree(1,2);tree.position.set(0,0,-1);props.tree.add(tree);const pine=M.pine(.85);pine.position.set(3.2,0,-1.6);props.pine.add(pine);
+for(let i=0;i<3;i++){const b=M.bush(i+1);b.position.set(-.6+i*.75,0,2);props.bush.add(b);}
+const camera=new THREE.PerspectiveCamera(40,1,.05,150);let yaw=.25,pitch=.27,distance=14,target=new THREE.Vector3(0,2,0),drag;
+function resize(){renderer.setSize(canvas.clientWidth,canvas.clientHeight,false);camera.aspect=canvas.clientWidth/canvas.clientHeight;camera.updateProjectionMatrix();}addEventListener('resize',resize);resize();
+for(const b of document.querySelectorAll('button[data-kind]'))b.onclick=()=>{const kind=b.dataset.kind;for(const [k,g]of Object.entries(props))g.visible=kind==='all'||kind===k;target.set(kind==='rock'?-3:kind==='pine'?3.2:0,kind==='rock'?.6:kind==='bush'?.45:2,kind==='bush'?2:0);distance=kind==='all'?14:kind==='tree'||kind==='pine'?12:kind==='rock'?5:4;};
+canvas.onpointerdown=e=>{drag=[e.clientX,e.clientY];canvas.setPointerCapture(e.pointerId);};canvas.onpointermove=e=>{if(!drag)return;yaw-=(e.clientX-drag[0])*.008;pitch=Math.max(.03,Math.min(1.2,pitch+(e.clientY-drag[1])*.006));drag=[e.clientX,e.clientY];};canvas.onpointerup=()=>drag=null;canvas.onwheel=e=>{e.preventDefault();distance=Math.max(2,Math.min(35,distance+e.deltaY*.01));};
+const cuts=new BushCutEffects(scene);let last=0;
+document.getElementById('cut-bush').onclick=()=>{document.querySelector('[data-kind="bush"]').click();if(cuts.active.length)return;for(const bush of props.bush.children){bush.visible=true;bush.scale.set(1,1,1);bush.rotation.x=bush.rotation.z=0;cuts.cut(bush,.5);}};
+function render(ms=0){const dt=Math.min(.05,(ms-last)/1000);last=ms;cuts.update(dt);camera.position.set(target.x+Math.sin(yaw)*distance*Math.cos(pitch),target.y+Math.sin(pitch)*distance,target.z+Math.cos(yaw)*distance*Math.cos(pitch));camera.lookAt(target);renderer.render(scene,camera);requestAnimationFrame(render);}render();
+</script></body></html>

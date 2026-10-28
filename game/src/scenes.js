@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import * as M from './models.js';
+import { makeBridge } from './bridge.js';
+import { interiorDoorway, attachedTreeDoorway, caveEntrance } from './doorways.js';
 import { NPC } from './npc.js';
 import { Thornmaw, Sprout, HoverBloom } from './enemies.js';
 import { fbm, distToPaths, hexToRgb, mixRgb, smooth, clamp, TAU, angleDiff } from './util.js';
@@ -51,16 +53,16 @@ SCENES.village = {
   mapPaths: VPATHS,
   spawns: {
     start: { x: -13, z: 10, yaw: Math.PI },
-    fromShop: { x: 13.2, z: -6.6, yaw: -1.08 + Math.PI },
+    fromShop: { x: 11.3, z: -6, yaw: -1.0838970949836275 },
     fromHollow: { x: -20.5, z: -15, yaw: 0.93 },
     fromField: { x: 0, z: -35, yaw: 0 },
   },
   build(w, game) {
     const S = game.save;
-    w.waterRect(0, 2, 80, 6.6, -0.38);
-    // Bridge across the stream
-    w.platform(0, 2, 1.5, 3.2, 0.32, '#7a5530');
-    for (const sx of [-1.45, 1.45]) for (const sz of [-2.8, 0, 2.8]) w.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.9, 0.15), M.mat('#5a3a1e')), { castShadow: true }), sx, 2 + sz, 0, 0.7);
+    w.waterRect(0, 2, 80, 6.6, -0.38, '#496b63', {curve:streamZ});
+    // Walkable collider follows the top of the separate weathered deck boards.
+    w.platform(0, 2, 1.5, 3.2, 0.32, '#7a5530', false);
+    w.add(makeBridge(), 0, 2, 0, 0);
 
     // Ring of giant trees enclosing the village, open to the north.
     for (let a = 0; a < TAU; a += 0.24) {
@@ -80,20 +82,16 @@ SCENES.village = {
       w.prop(M.treeHouse(c, d), x, z, yaw, 3.4);
     }
     const shopYaw = Math.atan2(-17, 9);
-    w.prop(M.treeHouse('#704c2c', '#2a6a3a'), 17, -9, shopYaw, 3.4);
+    w.prop(M.treeHouse('#704c2c', '#2a6a3a', true), 17, -9, shopYaw, 3.4);
     w.add(M.sign('Shop'), 17 + Math.sin(shopYaw) * 3.6 + Math.cos(shopYaw) * 1.6, -9 + Math.cos(shopYaw) * 3.6 - Math.sin(shopYaw) * 1.6, shopYaw);
-    w.portal(17 + Math.sin(shopYaw) * 3.75, -9 + Math.cos(shopYaw) * 3.75, 0.9, 'shop', 'fromVillage', { label: 'Enter shop' });
+    w.portal(17 + Math.sin(shopYaw) * 3.75, -9 + Math.cos(shopYaw) * 3.75, 0.9, 'shop', 'fromVillage', { label: 'Enter shop', title: 'ร้านขายของ', hint: 'เดินเข้าประตูเพื่อเข้าร้าน', yaw: shopYaw, markerOffset: -.3 });
+
+    attachedTreeDoorway(w,17,-9,shopYaw);
 
     // Root Hollow entrance
     const hy = Math.atan2(23, 17);
-    w.prop(M.rock(5, '#5a5248', 1), -27, -20, 0, 4.2);
-    w.prop(M.rock(3.5, '#5f574c', 2), -21, -22.5, 0, 2.6);
-    w.prop(M.rock(3.5, '#5f574c', 3), -28.5, -13.5, 0, 2.6);
-    const ar = w.add(M.arch('#4a3424', 3, 3.6), -23.6, -17.8, hy);
-    w.occluders.push(ar);
-    const mouth = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 3.8), new THREE.MeshBasicMaterial({ color: 0x050403 }));
-    w.add(mouth, -24.1, -18.2, hy, vHeight(-24, -18) + 1.8);
-    w.portal(-23.2, -17.4, 1.2, 'hollow', 'fromVillage', { label: 'Enter the hollow' });
+    caveEntrance(w,-23.2,-17.4,hy);
+    w.portal(-23.2, -17.4, 1.2, 'hollow', 'fromVillage', { label: 'Enter the hollow', title: 'โพรงรากไม้', hint: 'เดินเข้าปากโพรงเพื่อเข้า', yaw: hy, markerOffset: .2, signHeight: 4.1 });
     w.sign(-18.5, -13, hy, 'Root\nHollow', 'Root Hollow. Snapping plants grow inside. Mind your fingers.');
 
     // Lookout: stepping platforms up to a chest.
@@ -201,11 +199,11 @@ SCENES.shop = {
   bounds: { type: 'circle', x: 0, z: 0, r: 7.2 },
   spawns: { fromVillage: { x: 0, z: 5.6, yaw: Math.PI } },
   build(w, game) {
-    const wall = new THREE.Mesh(new THREE.CylinderGeometry(7.6, 7.6, 6, 28, 1, true), M.mat('#5a3a22', { side: THREE.BackSide }));
+    const wall = new THREE.Mesh(new THREE.CylinderGeometry(7.6, 7.6, 6, 48, 1, true, .2, TAU-.4), M.mat('#5a3a22', { side: THREE.BackSide }));
     w.add(wall, 0, 0, 0, 3);
     const ceil = new THREE.Mesh(new THREE.CircleGeometry(7.6, 28), M.mat('#3a2414', { side: THREE.DoubleSide }));
     ceil.rotation.x = Math.PI / 2; w.add(ceil, 0, 0, 0, 5.2); ceil.rotation.x = Math.PI / 2;
-    const rug = new THREE.Mesh(new THREE.CircleGeometry(2.4, 24), M.mat('#8a2a2a')); rug.rotation.x = -Math.PI / 2; w.add(rug, 0, 2.2, 0, 0.02); rug.rotation.x = -Math.PI / 2;
+    const rug = new THREE.Mesh(new THREE.CircleGeometry(2.4, 24), M.mat('#8a2a2a')); rug.receiveShadow=true; rug.rotation.x = -Math.PI / 2; w.add(rug, 0, 2.2, 0, 0.003); rug.rotation.x = -Math.PI / 2;
     const counter = new THREE.Mesh(new THREE.BoxGeometry(6.4, 1.1, 1), M.mat('#7a4a24')); counter.castShadow = counter.receiveShadow = true;
     w.add(counter, 0, -2.5, 0, 0.55); w.box(0, -2.5, 3.2, 0.5);
     w.platform(0, -4.3, 3, 1.2, 0.45, '#5a3a22');
@@ -221,7 +219,8 @@ SCENES.shop = {
       const l = new THREE.PointLight(0xffb060, 14, 11, 1.6); l.position.set(x, 3.6, z); w.scene.add(l);
       w.add(M.lamp(0, 0, 0), x, z, 0, 3.8);
     }
-    w.portal(0, 7.05, 0.9, 'village', 'fromShop', { label: 'Leave' });
+    interiorDoorway(w,7.45,2.7,3.1);
+    w.portal(0, 7.05, 1, 'village', 'fromShop', { label: 'Leave', title: 'ทางออก → หมู่บ้าน', hint: 'เดินผ่านประตูเพื่อออกจากร้าน' });
     w.npc(new NPC(game, { name: 'Pell', x: 0, z: -4, yaw: 0, talkRange: 3.6, look: { top: '#8a5a2a', hair: '#5a3a1a', hat: 'band', hatColor: '#3a7a3a', build: 1.2 }, bark: 'Welcome, welcome!', talk: () => shopTalk(game) }));
   },
 };
@@ -237,7 +236,7 @@ function shopTalk(game) {
           if (S.gems < PRICE) return [say('Pell', `That's *${PRICE} gems*. You've got ${S.gems}... come back with ${PRICE - S.gems} more!`)];
           S.gems -= PRICE; S.hasShield = true;
           if (game.world.display) game.world.display.visible = false;
-          game.giveItem('Oak Shield', 'Hold the right mouse button (or K / Shift) to guard. Blocks bites and reflects seeds.');
+          game.giveItem('Oak Shield', 'Hold the right mouse button (or K / Shift) to guard. Blocks bites and reflects seeds.', {shield:true});
           return [say('Pell', 'A fine choice! Sturdy oak, brass rim. If you ever lose it, I\'ll have another.')];
         },
       }]),
@@ -272,6 +271,7 @@ SCENES.hollow = {
     // Root walls
     for (let i = 0; i < 46; i++) {
       const a = i / 46 * TAU, r = 15 + (i % 3) * 0.6;
+      if(Math.sin(a)>0 && Math.abs(Math.cos(a)*r)<2.5)continue;
       const root = M.rootArch(10 + (i % 4) * 2, 0.8 + (i % 3) * 0.3, i % 2 ? '#4a3424' : '#3f2c1e');
       root.rotation.set(Math.sin(a) * 0.25, a, Math.cos(a) * 0.25 + (i % 2 ? 0.2 : -0.2));
       root.position.set(Math.cos(a) * r, 4, Math.sin(a) * r);
@@ -279,6 +279,7 @@ SCENES.hollow = {
     }
     for (let i = 0; i < 18; i++) {
       const a = i / 18 * TAU + 0.2;
+      if(Math.sin(a)>0 && Math.abs(Math.cos(a)*13.5)<2.5)continue;
       const v = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 6), M.mat('#3f7a33'));
       v.position.set(Math.cos(a) * 13.5, 5, Math.sin(a) * 13.5); w.scene.add(v);
     }
@@ -294,7 +295,8 @@ SCENES.hollow = {
       w.add(glow, x, z, 0, 0.9);
       w.circle(x, z, 0.6);
     }
-    w.portal(0, 13.4, 1.4, 'village', 'fromHollow', { label: 'Leave' });
+    interiorDoorway(w,14.1,3.6,4);
+    w.portal(0, 13.4, 1.4, 'village', 'fromHollow', { label: 'Leave', title: 'ทางออก → หมู่บ้าน', hint: 'เดินผ่านช่องแสงเพื่อออกจากโพรง' });
     w.chest(0, -11.5, 0, 'hollow', { gems: 20 });
     w.enemy(new Thornmaw(game, 0, -1.5, Math.PI));
     w.enemy(new Thornmaw(game, -6.5, -6.5, Math.PI));
@@ -316,7 +318,11 @@ const fHeight = (x, z) => {
   const pd = distToPaths(x, z, FPATHS);
   h *= smooth(clamp((pd - 2) / 12, 0, 1)) * 0.9 + 0.1;
   const dr = Math.abs(z - riverZ(x));
-  if (dr < 5) h -= Math.pow(1 - dr / 5, 1.4) * 1.8;
+  // A continuous river basin: submerged bed, sloping banks above the -.75
+  // waterline, then a smooth join to the surrounding rolling landscape.
+  const bank=Math.max(h,.35),bed=-1.9+Math.sin(x*.08)*.08;
+  if(dr<5.8)h=bed+(bank-bed)*smooth(clamp(dr/5.8,0,1));
+  else if(dr<10)h+=(bank-h)*(1-smooth((dr-5.8)/4.2));
   const r = Math.hypot(x, z);
   if (r > 85) h += Math.min(r - 85, 10) * 0.8 - Math.max(0, r - 110) * 0.15;
   return h;
@@ -327,7 +333,7 @@ SCENES.field = {
   sky: { top: '#3f84d0', bottom: '#bcd8e4', clouds: 0.7 },
   light: { sky: '#e0f0ff', ground: '#4a6a3a', hemi: 1.0, sun: '#fff4dc', sunI: 2.6, dir: [0.6, 1, -0.4] },
   ground: {
-    size: 400, seg: 200, tex: 'grass', texScale: 3,
+    size: 400, seg: 320, tex: 'grass', texScale: 3,
     color: (x, z, h) => {
       const pd = distToPaths(x, z, FPATHS);
       const grass = mixRgb(hexToRgb('#5a9430'), hexToRgb('#8ab43e'), (fbm(x * 0.05, z * 0.05) + 1) / 2);
@@ -348,8 +354,10 @@ SCENES.field = {
     fromDesert: { x: -82, z: 0, yaw: Math.PI / 2 },
   },
   build(w, game) {
-    w.waterRect(0, 22, 200, 14, -0.75);
-    w.platform(0.5, 22, 2, 7.5, 0.25, '#8a6a40');
+    w.waterRect(0, 22, 200, 10, -0.75, '#507d87', {curve:riverZ});
+    w.platform(0.5, 22, 2, 7.5, 0.55, '#8a6a40', false);
+    const fieldBridge=makeBridge();fieldBridge.scale.set(4/3,1,15/6.4);
+    w.add(fieldBridge,.5,22,0,.23);
     // Gates at each exit
     w.prop(M.arch('#7a6a50', 4, 4.5), 1.5, 86.5, 0);
     w.circle(-0.5, 86.5, 0.7); w.circle(3.5, 86.5, 0.7);

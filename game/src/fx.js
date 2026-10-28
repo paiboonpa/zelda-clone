@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { TAU } from './util.js';
+import { BushCutEffects } from './bush-cut.js';
 
 const MAX = 2500;
 
@@ -31,6 +32,7 @@ export class FX {
     this.meshes = [];
     this.streakTex = makeStreakTexture();
     this.trail = new Trail(scene);
+    this.bushCuts = new BushCutEffects(scene);
   }
 
   setScale(h, fov) { this.mat.uniforms.uScale.value = h / 2 / Math.tan(fov * Math.PI / 360); }
@@ -39,6 +41,7 @@ export class FX {
     this.scene = scene;
     scene.add(this.points);
     this.trail.attach(scene);
+    this.bushCuts.attach(scene);
     for (const m of this.meshes) m.mesh.removeFromParent();
     this.meshes.length = 0;
     for (const p of this.parts) p.life = 0;
@@ -94,6 +97,10 @@ export class FX {
     this.emit(x + (Math.random() - 0.5) * 0.3, y + (Math.random() - 0.5) * 0.3, z + (Math.random() - 0.5) * 0.3, { vy: 0.6, life: 0.35, size: ready ? 0.22 : 0.12, color: c });
   }
   dust(x, y, z, color = [0.75, 0.68, 0.55], n = 8) { this.burst(x, y + 0.1, z, { count: n, color, speed: 1.6, life: 0.6, size: 0.35, size1: 0.6, up: 0.6, drag: 3, alpha: 0.4 }); }
+  cutBush(mesh, yaw = 0) {
+    this.bushCuts.cut(mesh, yaw);
+    this.dust(mesh.position.x, mesh.position.y, mesh.position.z, [.4,.48,.25], 5);
+  }
   leaves(x, y, z) { this.burst(x, y + 0.3, z, { count: 18, color: [[0.35, 0.75, 0.25], [0.55, 0.85, 0.3]], speed: 4, life: 0.9, size: 0.14, gravity: -6, up: 3, drag: 1.5 }); }
   splash(x, y, z) { this.burst(x, y, z, { count: 14, color: [0.75, 0.9, 1], speed: 2.5, life: 0.5, size: 0.12, gravity: -12, up: 3, drag: 0.5 }); }
   sparkle(x, y, z, color = [0.6, 1, 0.6]) { this.burst(x, y, z, { count: 12, color, speed: 2.5, life: 0.5, size: 0.14, up: 1, drag: 2 }); }
@@ -150,6 +157,7 @@ export class FX {
       if (m.life <= 0) { m.mesh.removeFromParent(); m.mesh.geometry.dispose(); m.mesh.material.dispose(); this.meshes.splice(i, 1); }
     }
     this.trail.update(dt);
+    this.bushCuts.update(dt);
   }
 }
 

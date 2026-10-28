@@ -1,0 +1,11 @@
+{
+  "status": "pass",
+  "glb_bytes": 856540,
+  "unique_meshes": 112,
+  "nodes": 151,
+  "materials": 33,
+  "textures": 2,
+  "animation_clips": 0,
+  "mesh_instances": 137,
+  "triangles": 78264
+}

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { makeHero } from './models.js';
+import { FootShadows } from './foot-shadows.js';
 import { clamp, damp, dampAngle, angleDiff, TAU } from './util.js';
 
 const SWINGS = [
@@ -24,15 +25,27 @@ export class Player {
     this.charge = 0; this.invuln = 0; this.carry = null;
     this.walkPhase = 0; this.stepAcc = 0; this.hitSet = new Set();
     this.tmpA = new THREE.Vector3(); this.tmpB = new THREE.Vector3();
+    this.rewardDisplay = null;
+    this.footShadows = new FootShadows();
   }
 
   place(x, z, yaw) {
+    this.clearReward();
     this.pos.set(x, this.game.world.groundAt(x, z), z);
     this.vel.set(0, 0, 0); this.yaw = yaw; this.state = 'move'; this.carry = null; this.charge = 0;
     this.root.position.copy(this.pos);
   }
 
-  setState(s) { this.state = s; this.stateT = 0; this.hitSet.clear(); }
+  setState(s) { if(s !== 'get')this.clearReward(); this.state = s; this.stateT = 0; this.hitSet.clear(); }
+  showReward(mesh) {
+    this.clearReward(); this.rewardDisplay = mesh; this.root.add(mesh);
+  }
+  clearReward() {
+    if(!this.rewardDisplay)return;
+    this.rewardDisplay.removeFromParent();
+    this.rewardDisplay.traverse(o=>{if(o.isMesh)for(const m of [].concat(o.material))m.dispose();});
+    this.rewardDisplay=null;
+  }
   get facing() { return { x: Math.sin(this.yaw), z: Math.cos(this.yaw) }; }
 
   update(dt) {
@@ -118,7 +131,8 @@ export class Player {
         if (this.stateT > 0.35) this.setState('move');
         break;
       case 'hurt': accel = 3; if (this.stateT > 0.4) this.setState('move'); break;
-      case 'get': case 'dead': case 'idle': break;
+      case 'get': if(this.stateT>=1.6)this.setState('move'); break;
+      case 'dead': case 'idle': break;
     }
 
     // Horizontal velocity
@@ -198,17 +212,13 @@ export class Player {
     this.root.position.copy(this.pos);
     this.root.rotation.y = this.yaw;
     const run = clamp(this.speed / 6, 0, 1);
-    // Slow strafing (charging, guarding) uses a quicker, shorter stride so the legs still read as walking.
-    const slowGait = this.state === 'charge' || this.state === 'guard';
-    if (this.grounded) this.walkPhase += this.speed * dt * (slowGait ? 3.6 : 2.3);
-    const strafe = slowGait ? clamp(this.speed / 1.6, 0, 1) : 0;
-    const stride = Math.sin(this.walkPhase) * strafe;
+    if (this.grounded) this.walkPhase += this.speed * dt * 2.3;
     const sw = Math.sin(this.walkPhase) * run;
     const breathe = Math.sin(time * 2.2) * 0.02;
-    let legL = sw * 0.9, legR = -sw * 0.9;
+    let legL = sw * 0.68, legR = -sw * 0.68;
     let armL = { x: sw * 0.7 - 0.1, y: 0, z: -0.12 };
     let armR = { x: -sw * 0.5 - 0.25, y: 0, z: 0.12 };
-    let swordX = 1.25, shieldFace = 0, torsoX = run * 0.12 + breathe, torsoY = 0, bodyY = Math.abs(Math.cos(this.walkPhase)) * 0.06 * run, spin = 0;
+    let swordX = 1.25, shieldFace = 0, torsoX = run * 0.12 + breathe, torsoY = 0, bodyY = -Math.abs(Math.cos(this.walkPhase)) * 0.012 * run, spin = 0;
     const t = this.stateT;
     const ease = (v) => 1 - Math.pow(1 - clamp(v, 0, 1), 3);
     switch (this.state) {
@@ -224,13 +234,27 @@ export class Player {
         legL = 0.35; legR = -0.3;
         break;
       }
-      case 'charge': armR = { x: -1.1, y: -1.7, z: 0 }; swordX = Math.PI; torsoY = 0.6; legL = 0.3 * (1 - strafe) + stride * 0.75; legR = -0.3 * (1 - strafe) - stride * 0.75; bodyY = Math.abs(Math.cos(this.walkPhase)) * 0.04 * strafe; armL = { x: -0.8, y: 0.3, z: -0.3 }; break;
+      case 'charge': {
+        const power = clamp(this.charge / CHARGE_TIME, 0, 1);
+        const stride = this.grounded ? clamp(this.speed / 2.2, 0, 1) : 0;
+        const step = Math.sin(this.walkPhase) * stride;
+        const settle = Math.sin(t * (5 + power * 2)) * .045 * (1 - stride);
+        // Short alternating steps while moving; a restrained weight shift at rest.
+        const stance = .18 * (1 - stride);
+        legL = stance + step * .58 + settle;
+        legR = -stance - step * .58 - settle;
+        bodyY = -.018 * power + Math.abs(Math.cos(this.walkPhase)) * .025 * stride + settle * .08;
+        torsoX = .08 + power * .035 + breathe;
+        armR = { x: -1.1, y: -1.7, z: 0 }; swordX = Math.PI;
+        torsoY = .6; armL = { x: -.8, y: .3, z: -.3 };
+        break;
+      }
       case 'spin': {
         spin = ease(t / 0.5) * TAU;
         armR = { x: -1.5, y: -1.5, z: 0 }; swordX = Math.PI; armL = { x: -0.4, y: 0, z: -1.2 }; torsoX = 0.25; legL = 0.6; legR = -0.6;
         break;
       }
-      case 'guard': armL = { x: -1.35, y: -0.55, z: 0 }; shieldFace = 1; torsoX = 0.2; armR = { x: -0.3, y: 0, z: 0.4 }; legL = 0.25 * (1 - strafe) + stride * 0.6; legR = -0.25 * (1 - strafe) - stride * 0.6; bodyY -= 0.06; break;
+      case 'guard': armL = { x: -1.35, y: -0.55, z: 0 }; shieldFace = 1; torsoX = 0.2; armR = { x: -0.3, y: 0, z: 0.4 }; legL = 0.25; legR = -0.25; bodyY -= 0.06; break;
       case 'lift': { const p = ease(t / 0.4); armL = armR = { x: -0.9 - p * 2.1, y: 0, z: 0 }; torsoX = 0.4 - p * 0.4; bodyY -= (1 - p) * 0.15; break; }
       case 'throw': { const p = ease(t / 0.2); armL = armR = { x: -3 + p * 1.6, y: 0, z: 0 }; torsoX = p * 0.3; break; }
       case 'hurt': torsoX = -0.4; armL = { x: 0.5, y: 0, z: -0.6 }; armR = { x: 0.5, y: 0, z: 0.6 }; break;
@@ -253,8 +277,27 @@ export class Player {
     R.torso.rotation.y = this.state === 'attack' ? torsoY : damp(R.torso.rotation.y, torsoY, 14, dt);
     R.body.position.y = damp(R.body.position.y, bodyY, 20, dt);
     R.body.rotation.y = spin;
+    // Keep the supporting sole on the ground, with independent ankle leveling.
+    // Correct only the visual rig; collision and jump trajectories stay unchanged.
+    const plant=this.grounded&&!['dodge','hurt','dead'].includes(this.state);
+    for(const [leg,phase]of [[R.legL,this.walkPhase],[R.legR,this.walkPhase+Math.PI]]){
+      const foot=leg.foot,bind=leg.bindPosition;
+      if(!foot||!bind)continue;
+      leg.position.copy(bind);
+      foot.rotation.x=plant?-leg.rotation.x:0;
+      if(plant){
+        this.root.updateMatrixWorld(true);
+        foot.localToWorld(this.tmpA.set(0,-.11,.035));
+        const ground=this.game.world.groundAt(this.tmpA.x,this.tmpA.z,this.pos.y);
+        const stride=this.state==='charge'?clamp(this.speed/2.2,0,1):run;
+        const stepping=this.state==='move'||this.state==='charge';
+        const lift=stepping?Math.pow(Math.max(0,-Math.cos(phase)),1.5)*.065*stride:0;
+        leg.position.y+=clamp(ground-this.tmpA.y,-.25,.25)+lift;
+      }
+    }
     // Shield faces sideways at rest and forward when guarding.
-    R.shield.visible = this.game.save.hasShield;
+    R.shield.visible = this.game.save.hasShield && this.state !== 'get';
+    R.sword.visible = this.state !== 'get';
     R.shield.rotation.z = damp(R.shield.rotation.z, shieldFace ? 0 : Math.PI / 2, 20, dt);
     R.shield.position.y = shieldFace ? -0.38 : -0.25;
     const cap = R.head.userData.capTip;
@@ -262,6 +305,15 @@ export class Player {
     // Charge glow on the blade.
     const glow = this.state === 'charge' ? (this.charge >= CHARGE_TIME ? 0.8 + Math.sin(time * 30) * 0.2 : this.charge / CHARGE_TIME * 0.5) : this.state === 'spin' ? 0.8 : 0;
     R.glow.material.opacity = damp(R.glow.material.opacity, glow, 20, dt);
+    if(this.rewardDisplay){
+      this.root.updateMatrixWorld(true);
+      R.armL.userData.hand.getWorldPosition(this.tmpA);
+      R.armR.userData.hand.getWorldPosition(this.tmpB);
+      this.root.worldToLocal(this.tmpA.add(this.tmpB).multiplyScalar(.5));
+      this.rewardDisplay.position.copy(this.tmpA);this.rewardDisplay.position.y+=.34;
+      this.rewardDisplay.rotation.y=Math.sin(this.stateT*2)*.35;
+    }
     this.root.visible = this.invuln <= 0 || Math.floor(time * 20) % 2 === 0 || this.state === 'dead';
+    this.footShadows.update(this,this.game.world);
   }
 }

@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import * as M from './models.js';
 import { clamp, rng } from './util.js';
 import { tex, bump } from './textures.js';
+import { markDoorway } from './doorways.js';
+import { makeFlowingWater } from './flowing-water.js';
 
 /**
  * Runtime for one scene: terrain, collision, props and the authoring API scene
@@ -55,8 +57,8 @@ export class World {
     const sun = new THREE.DirectionalLight(L.sun, L.sunI);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
-    const sc = sun.shadow.camera; sc.left = sc.bottom = -26; sc.right = sc.top = 26; sc.near = 1; sc.far = 120;
-    sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03;
+    const sc = sun.shadow.camera; const shadowRange=d.interior?12:20;sc.left = sc.bottom = -shadowRange; sc.right = sc.top = shadowRange; sc.near = 1; sc.far = 120;
+    sun.shadow.bias = -0.00012; sun.shadow.normalBias = 0.008;
     s.add(sun); s.add(sun.target);
     this.sun = sun; this.sunDir = new THREE.Vector3(...L.dir).normalize();
 
@@ -92,7 +94,31 @@ export class World {
     obj.position.set(x, y ?? this.heightFn(x, z), z);
     obj.rotation.y = yaw;
     this.scene.add(obj);
+    if(obj.userData.groundFit && y===null)this.fitTreeBase(obj);
     return obj;
+  }
+  fitTreeBase(root){
+    const fit=root.userData.groundFit,height=fit.height*root.scale.y,anchor=root.position.y;
+    const point=new THREE.Vector3();root.updateMatrixWorld(true);
+    root.traverse(mesh=>{
+      if(!mesh.isMesh||mesh.isInstancedMesh)return;
+      const source=mesh.geometry.attributes.position;let touchesBase=false;
+      for(let i=0;i<source.count;i++){
+        point.fromBufferAttribute(source,i).applyMatrix4(mesh.matrixWorld);
+        if(point.y-anchor<height){touchesBase=true;break;}
+      }
+      if(!touchesBase)return;
+      // Each placement gets only its affected base geometry; cached sources stay intact.
+      const geo=mesh.geometry.clone(),p=geo.attributes.position,inverse=mesh.matrixWorld.clone().invert();
+      for(let i=0;i<p.count;i++){
+        point.fromBufferAttribute(p,i).applyMatrix4(mesh.matrixWorld);
+        const t=Math.max(0,Math.min(1,(point.y-anchor)/height)),weight=1-t*t*(3-2*t);
+        if(!weight)continue;
+        point.y+=(this.terrainHeight(point.x,point.z)-anchor-fit.embed)*weight;
+        point.applyMatrix4(inverse);p.setXYZ(i,point.x,point.y,point.z);
+      }
+      geo.computeVertexNormals();geo.computeBoundingBox();geo.computeBoundingSphere();geo.userData={...geo.userData,groundFitted:true};mesh.geometry=geo;
+    });
   }
   circle(x, z, r, occlude = null) { this.circles.push({ x, z, r }); if (occlude) this.occluders.push(occlude); }
   box(x, z, hw, hd, yaw = 0, top = 99) { this.boxes.push({ x, z, hw, hd, c: Math.cos(yaw), s: Math.sin(yaw), top }); }
@@ -109,12 +135,11 @@ export class World {
       return m;
     }
   }
-  waterRect(x, z, w, d, y, color = '#3f7fa8') {
-    this.water.push({ x, z, hw: w / 2, hd: d / 2, y });
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d, 1, 1), new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.78, roughness: 0.08, metalness: 0.3 }));
-    m.rotation.x = -Math.PI / 2; m.position.set(x, y, z); m.receiveShadow = true;
-    this.scene.add(m);
-    this.animated.push((t) => { m.material.color.setHSL(0.56, 0.45, 0.42 + Math.sin(t * 1.3 + x) * 0.02); });
+  waterRect(x, z, w, d, y, color = '#527c7c', options = {}) {
+    const m=makeFlowingWater(w,d,{color,sunDirection:this.sunDir,sunColor:this.def.light.sun,curve:options.curve,x,z,level:y,heightAt:(x,z)=>this.terrainHeight(x,z)});
+    m.position.set(x,y,z);
+    this.water.push({x,z,hw:w/2,hd:d/2,y,curve:options.curve,mesh:m});
+    this.scene.add(m);this.animated.push(t=>m.userData.update(t));
     return m;
   }
   prop(obj, x, z, yaw = 0, r = 0, y = null) {
@@ -176,6 +201,7 @@ export class World {
   portal(x, z, r, to, spawn, opts = {}) {
     this.portals.push({ x, z, r, to, spawn, ...opts });
     this.mapMarks.push({ x, z, color: '#8fe3c0', portal: true });
+    if(opts.title)markDoorway(this,x+Math.sin(opts.yaw||0)*(opts.markerOffset||0),z+Math.cos(opts.yaw||0)*(opts.markerOffset||0),{title:opts.title,yaw:opts.yaw,r,signHeight:opts.signHeight});
   }
   trigger(x, z, r, fn, once = true) { this.triggers.push({ x, z, r, fn, once, done: false }); }
   npc(n) { this.npcs.push(n); this.scene.add(n.root); return n; }
@@ -183,8 +209,17 @@ export class World {
 
   // ------------------------------------------------------------- queries
   inWater(x, z) {
-    for (const w of this.water) if (Math.abs(x - w.x) < w.hw && Math.abs(z - w.z) < w.hd) return w;
+    for (const w of this.water) if (Math.abs(x - w.x) < w.hw && Math.abs(z - (w.curve ? w.curve(x) : w.z)) < w.hd && this.terrainHeight(x,z)<w.y) return w;
     return null;
+  }
+  // Match the actual rendered terrain triangles, including coarse terrain grids.
+  terrainHeight(x,z){
+    const g=this.def.ground,n=g.seg,cell=g.size/n;
+    const u=Math.max(0,Math.min(n-.00001,(x-(g.cx||0)+g.size/2)/cell));
+    const v=Math.max(0,Math.min(n-.00001,(z-(g.cz||0)+g.size/2)/cell));
+    const col=Math.floor(u),row=Math.floor(v),dx=u-col,dz=v-row,p=this.terrain.geometry.attributes.position,a=row*(n+1)+col;
+    const ha=p.getY(a),hb=p.getY(a+n+1),hc=p.getY(a+n+2),hd=p.getY(a+1);
+    return dx+dz<=1?ha+(hd-ha)*dx+(hb-ha)*dz:hc+(hb-hc)*(1-dx)+(hd-hc)*(1-dz);
   }
   /** Highest walkable surface at (x,z) that is not far above `fromY`. */
   groundAt(x, z, fromY = Infinity, step = 0.5) {

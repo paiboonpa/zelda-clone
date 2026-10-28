@@ -129,6 +129,7 @@ class Game {
     if (!this.fx) { this.fx = new FX(this.world.scene); this.resize(); } else this.fx.attach(this.world.scene);
     if (!this.player) this.player = new Player(this);
     this.world.scene.add(this.player.root);
+    this.world.scene.add(this.player.footShadows.root);
     this.world.scene.add(this.wisp);
     const sp = def.spawns[spawnKey] || Object.values(def.spawns)[0];
     this.player.place(sp.x, sp.z, sp.yaw);
@@ -143,7 +144,8 @@ class Game {
     }
   }
   disposeWorld(w) {
-    w.scene.traverse((o) => { if (o === this.player?.root || o === this.wisp) return; if (o.isInstancedMesh || o === w.terrain) o.geometry.dispose(); });
+    for(const water of w.water){water.mesh?.dispose();water.mesh?.geometry.dispose();}
+    w.scene.traverse((o) => { if (o === this.player?.root || o === this.wisp) return; if (o.isInstancedMesh || o === w.terrain || o.geometry?.userData.groundFitted) o.geometry.dispose(); });
     w.scene.remove(this.player?.root); w.scene.remove(this.wisp);
   }
   goto(id, spawn) {
@@ -165,11 +167,21 @@ class Game {
   heal(n) { this.save.hearts = Math.min(this.save.maxHearts, this.save.hearts + n); }
   addGems(n) { this.save.gems = Math.min(500, this.save.gems + n); }
 
-  giveItem(name, desc) {
+  giveItem(name, desc, reward) {
     this.audio.play('fanfare');
     this.player.setState('get');
+    if(reward){
+      let display;
+      if(reward.gems){display=M.gemMesh(reward.gems>=20?'red':reward.gems>=5?'blue':'green');display.scale.multiplyScalar(1.3);}
+      else if(reward.heart){display=M.heartMesh();display.scale.setScalar(.85);}
+      else if(reward.shield){
+        display=this.player.rig.shield.clone(true);display.visible=true;
+        display.rotation.set(-Math.PI/2,0,0);display.scale.setScalar(.85);
+        display.traverse(o=>{if(o.isMesh)o.material=Array.isArray(o.material)?o.material.map(m=>m.clone()):o.material.clone();});
+      }
+      if(display){display.name='Presented reward';this.player.showReward(display);}
+    }
     this.ui.toast(`<b>You got the ${name}!</b><br><small>${desc}</small>`, 4.5);
-    setTimeout(() => { if (this.player.state === 'get') this.player.setState('move'); }, 1600);
     this.saveGame();
   }
 
@@ -238,8 +250,8 @@ class Game {
   cutBushes(test, p) {
     for (const b of this.world.bushes) {
       if (!b.alive || p.hitSet.has(b) || !test(b)) continue;
-      p.hitSet.add(b); b.alive = false; b.mesh.visible = false;
-      this.audio.play('cut'); this.fx.leaves(b.x, b.mesh.position.y, b.z);
+      p.hitSet.add(b); b.alive = false;
+      this.audio.play('cut'); this.fx.cutBush(b.mesh, p.yaw);
       this.dropLoot(b.x, b.mesh.position.y + 0.3, b.z, 'bush');
     }
   }
@@ -254,13 +266,14 @@ class Game {
       if (Math.random() < 0.5) this.spawnPickup('green', x, y, z);
       if (S.hearts < S.maxHearts && Math.random() < 0.4) this.spawnPickup('heart', x, y, z);
     } else if (kind === 'rock') {
-      if (r < 0.5) this.spawnPickup('green', x, y, z);
-      else if (r < 0.65) this.spawnPickup('blue', x, y, z);
+      // Breaking a liftable rock always rewards the throw; blue gems are rarer.
+      this.spawnPickup(r < 0.15 ? 'blue' : 'green', x, y, z);
     }
   }
   spawnPickup(kind, x, y, z, life = 14) {
     const mesh = kind === 'heart' ? M.heartMesh() : M.gemMesh(kind);
     if (kind === 'heart') mesh.scale.setScalar(0.8);
+    mesh.position.set(x, y, z);
     this.world.scene.add(mesh);
     const a = Math.random() * TAU;
     this.world.pickups.push({ kind, mesh, x, y, z, vx: Math.cos(a) * 1.5, vy: 5, vz: Math.sin(a) * 1.5, life, t: 0 });
@@ -310,12 +323,13 @@ class Game {
       t.rock.mesh.rotation.x += dt * 6;
       let hit = m.y < w.groundAt(m.x, m.z);
       for (const e of w.enemies) if (e.alive && Math.hypot(e.x - m.x, e.z - m.z) < e.radius + 0.5 && Math.abs(e.lockPos.y - m.y) < 1.4) { this.applyHit(e, 2, 'rock', e.lockPos); hit = true; break; }
-      for (const b of w.bushes) if (b.alive && Math.hypot(b.x - m.x, b.z - m.z) < 0.8 && m.y < b.mesh.position.y + 1) { b.alive = false; b.mesh.visible = false; this.fx.leaves(b.x, b.mesh.position.y, b.z); this.dropLoot(b.x, b.mesh.position.y + 0.3, b.z, 'bush'); }
+      for (const b of w.bushes) if (b.alive && Math.hypot(b.x - m.x, b.z - m.z) < 0.8 && m.y < b.mesh.position.y + 1) { b.alive = false; this.audio.play('cut'); this.fx.cutBush(b.mesh, Math.atan2(t.vel.x,t.vel.z)); this.dropLoot(b.x, b.mesh.position.y + 0.3, b.z, 'bush'); }
       if (!hit) { const q = { x: m.x, z: m.z }; w.resolve(q, 0.3, m.y); if (Math.abs(q.x - m.x) + Math.abs(q.z - m.z) > 0.01) hit = true; }
       if (hit) {
-        this.audio.play('shatter'); this.fx.rocks(m.x, m.y, m.z);
+        const impactY = Math.max(m.y, w.groundAt(m.x, m.z));
+        this.audio.play('shatter'); this.fx.rocks(m.x, impactY, m.z);
         t.rock.mesh.visible = false; this.thrown.splice(i, 1);
-        this.dropLoot(m.x, m.y + 0.3, m.z, 'rock');
+        this.dropLoot(m.x, impactY + 0.3, m.z, 'rock');
       }
     }
   }
@@ -380,7 +394,7 @@ class Game {
 
   findContext() {
     const p = this.player, w = this.world, f = p.facing;
-    if (p.carry) return { key: 'E', label: 'Throw', act: () => p.throwRock() };
+    if (p.carry) return { key: 'E', label: 'เพื่อโยนหิน', rockHint: true, act: () => p.throwRock() };
     if (p.state !== 'move' || !p.grounded) return null;
     const front = (x, z, maxD) => {
       const dx = x - p.pos.x, dz = z - p.pos.z, d = Math.hypot(dx, dz);
@@ -393,8 +407,9 @@ class Game {
     }
     if (npc) return { key: 'E', label: 'Talk', act: () => this.talkTo(npc) };
     for (const c of w.chests) if (!c.opened && front(c.x, c.z, 1.7) && Math.abs(c.mesh.position.y - p.pos.y) < 0.6) return { key: 'E', label: 'Open', act: () => this.openChest(c) };
-    for (const r of w.rocks) if (r.alive && front(r.x, r.z, 1.25)) return { key: 'E', label: 'Lift', act: () => p.lift(r) };
+    for (const r of w.rocks) if (r.alive && front(r.x, r.z, 1.6) && Math.abs(r.mesh.position.y - p.pos.y) < .65) return { key: 'E', label: 'เพื่อยกหิน', rockHint: true, target: r.mesh, act: () => p.lift(r) };
     for (const s of w.signs) if (front(s.x, s.z, 1.8)) return { key: 'E', label: 'Read', act: () => this.dialog.start([{ who: '', text: s.text }]) };
+    for(const portal of w.portals) if(portal.hint && Math.hypot(p.pos.x-portal.x,p.pos.z-portal.z)<4) return {key:'↑',label:portal.hint,act:null};
     if (this.lock.target && this.lock.target.kind !== 'npc' && p.grounded) return { key: 'Space', label: 'Dodge', act: null };
     return null;
   }
@@ -404,6 +419,7 @@ class Game {
     this.dialog.start(steps, { npc });
   }
   openChest(c) {
+    if(c.opened)return;
     c.opened = true; this.save.flags['chest_' + c.id] = true;
     this.player.setState('idle');
     this.audio.play('chest');
@@ -412,14 +428,16 @@ class Game {
     const anim = () => { const k = Math.min(1, (performance.now() - t0) / 600); lid.rotation.x = -1.9 * k; if (k < 1) requestAnimationFrame(anim); };
     anim();
     this.fx.sparkle(c.x, c.mesh.position.y + 0.8, c.z, [1, 0.9, 0.5]);
+    const chestWorld=this.world;
     setTimeout(() => {
+      if(this.world!==chestWorld)return;
       if (c.reward.gems) {
         this.addGems(c.reward.gems);
-        this.giveItem(`${c.reward.gems} gems`, 'Gems can be spent at the Leafshade shop.');
+        this.giveItem(`${c.reward.gems} gems`, 'Gems can be spent at the Leafshade shop.', c.reward);
       } else if (c.reward.heart) {
         this.save.maxHearts += 1; this.save.hearts = this.save.maxHearts;
         this.audio.play('heartUp');
-        this.giveItem('Heart Vessel', 'Your maximum health increased by one heart, and you are fully healed.');
+        this.giveItem('Heart Vessel', 'Your maximum health increased by one heart, and you are fully healed.', c.reward);
       }
     }, 650);
   }
